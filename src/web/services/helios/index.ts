@@ -1,2 +1,6 @@
 export { HeliosWasmLoader, heliosWasmLoader } from './HeliosWasmLoader'
 export { HeliosProvider, getHeliosProvider, type HeliosConfig } from './HeliosProvider'
+export { HeliosRealIntegration } from './HeliosRealIntegration'
+export { HeliosProviderWrapper, type RpcProvider } from './HeliosProviderWrapper'
+export { HeliosProviderFactory, type NetworkConfig } from './HeliosProviderFactory'
+export { HeliosHealthMonitor, type HeliosHealthStatus } from './HeliosHealthMonitor'

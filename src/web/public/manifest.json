@@ -27,5 +27,11 @@
       "matches": ["*://connect.trezor.io/*/popup.html", "https://connect.onekey.so/popup.html"],
       "js": ["browser-polyfill.min.js", "vendor/trezor/trezor-content-script.js"]
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/wasm/helios.wasm", "assets/wasm/helios.js", "assets/wasm/helios.d.ts"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

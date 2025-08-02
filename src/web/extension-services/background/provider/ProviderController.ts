@@ -30,6 +30,8 @@ import {
 import { getBaseAccount } from '@ambire-common/libs/account/getBaseAccount'
 import { createTab } from '../webapi/tab'
 import { RequestRes, Web3WalletPermission } from './types'
+import { HeliosRealIntegration } from '@web/services/helios/HeliosRealIntegration'
+import { HeliosHealthMonitor } from '@web/services/helios/HeliosHealthMonitor'
 
 type ProviderRequest = DappProviderRequest & { requestRes: RequestRes }
 
@@ -62,12 +64,96 @@ export class ProviderController {
 
   isUnlocked: boolean
 
+  private heliosClient: HeliosRealIntegration | null = null
+  private isHeliosReady = false
+  private heliosInitPromise: Promise<void> | null = null
+  private heliosHealthMonitor = new HeliosHealthMonitor()
+
   constructor(mainCtrl: MainController) {
     this.mainCtrl = mainCtrl
 
     this.isUnlocked = this.mainCtrl.keystore.isReadyToStoreKeys
       ? this.mainCtrl.keystore.isUnlocked
       : true
+
+    // Initialize Helios for Ethereum mainnet
+    this.initializeHelios()
+  }
+
+  private async initializeHelios(): Promise<void> {
+    if (this.heliosInitPromise) {
+      return this.heliosInitPromise
+    }
+
+    this.heliosInitPromise = this.performHeliosInitialization()
+    return this.heliosInitPromise
+  }
+
+  private async performHeliosInitialization(): Promise<void> {
+    try {
+      console.log('🌟 Initializing Helios light client for Ambire wallet...')
+      
+      this.heliosClient = new HeliosRealIntegration()
+      
+      await this.heliosClient.initialize({
+        executionRpc: 'https://rpc.flashbots.net',
+        consensusRpc: 'https://www.lightclientdata.org',
+        network: 'mainnet',
+        checkpoint: null
+      })
+      
+      this.isHeliosReady = true
+      this.heliosHealthMonitor.updateInitializationStatus(true, true)
+      console.log('✅ Helios light client initialized successfully for Ambire wallet')
+      
+    } catch (error) {
+      console.warn('⚠️ Helios initialization failed in Ambire wallet, using fallback provider:', error)
+      this.isHeliosReady = false
+      this.heliosClient = null
+      this.heliosHealthMonitor.updateInitializationStatus(false, false)
+      this.heliosHealthMonitor.recordFailure(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  private async tryHeliosRpc(method: string, params: any[]): Promise<any> {
+    if (!this.isHeliosReady || !this.heliosClient) {
+      throw new Error('Helios not available')
+    }
+
+    switch (method) {
+      case 'eth_getBalance':
+        if (params.length < 1) throw new Error('eth_getBalance requires address parameter')
+        const balance = await this.heliosClient.getBalance(params[0])
+        return `0x${BigInt(balance).toString(16)}`
+
+      case 'eth_blockNumber':
+        const blockNumber = await this.heliosClient.getBlockNumber()
+        return `0x${BigInt(blockNumber).toString(16)}`
+
+      case 'eth_chainId':
+        const chainId = await this.heliosClient.getChainId()
+        return `0x${BigInt(chainId).toString(16)}`
+
+      case 'net_version':
+        const netVersion = await this.heliosClient.getChainId()
+        return netVersion.toString()
+
+      case 'eth_getTransactionCount':
+        if (params.length < 1) throw new Error('eth_getTransactionCount requires address parameter')
+        const count = await this.heliosClient.getTransactionCount(params[0])
+        return `0x${BigInt(count).toString(16)}`
+
+      case 'eth_call':
+        if (params.length < 1) throw new Error('eth_call requires transaction object')
+        const callData = params[0]
+        if (!callData.to || !callData.data) {
+          throw new Error('eth_call requires to and data fields')
+        }
+        return await this.heliosClient.call(callData.to, callData.data)
+
+      default:
+        throw new Error(`Method ${method} not supported by Helios light client`)
+    }
   }
 
   _internalGetAccounts = (origin: string) => {
@@ -119,6 +205,26 @@ export class ProviderController {
       throw ethErrors.provider.unauthorized()
     }
 
+    // For Ethereum mainnet (chainId = 1), try Helios first if healthy
+    if (chainId === 1n && this.heliosHealthMonitor.shouldUseHelios()) {
+      const startTime = Date.now()
+      try {
+        const result = await this.tryHeliosRpc(method, params)
+        const responseTime = Date.now() - startTime
+        this.heliosHealthMonitor.recordSuccess(responseTime)
+        console.log(`📡 Helios RPC success for ${method} from ${origin} (${responseTime}ms)`)
+        return result
+      } catch (error) {
+        const responseTime = Date.now() - startTime
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        this.heliosHealthMonitor.recordFailure(errorMessage)
+        console.warn(`⚠️ Helios RPC failed for ${method} from ${origin} (${responseTime}ms), falling back to default provider:`, error)
+        // Continue to fallback provider
+      }
+    }
+
+    // Fallback to default provider for all networks or when Helios fails
+    console.log(`🔄 Using fallback provider for ${method} from ${origin} (chainId: ${chainId})`)
     return provider.send(method, params)
   }
 
@@ -677,5 +783,32 @@ export class ProviderController {
   @Reflect.metadata('SAFE', true)
   netListening = () => {
     return true
+  }
+
+  // Helios-specific methods for monitoring and management
+  getHeliosStatus = () => {
+    return {
+      isAvailable: this.isHeliosReady,
+      healthMonitor: this.heliosHealthMonitor.getStatus(),
+      healthScore: this.heliosHealthMonitor.getHealthScore(),
+      shouldUseHelios: this.heliosHealthMonitor.shouldUseHelios(),
+      detailedReport: this.heliosHealthMonitor.getDetailedReport()
+    }
+  }
+
+  async retryHeliosInitialization(): Promise<boolean> {
+    console.log('🔄 Retrying Helios initialization...')
+    this.isHeliosReady = false
+    this.heliosClient = null
+    this.heliosInitPromise = null
+    this.heliosHealthMonitor.reset()
+    
+    try {
+      await this.initializeHelios()
+      return this.isHeliosReady
+    } catch (error) {
+      console.error('❌ Helios retry failed:', error)
+      return false
+    }
   }
 }

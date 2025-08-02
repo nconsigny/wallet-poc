@@ -53,6 +53,14 @@
     "test:e2e:web:swap-and-bridge": "WEBPACK_BUILD_OUTPUT_PATH=webkit-dev jest --config=./tests/jest.config.js -- ./tests/features/swap_and_bridge/swap_and_bridge.test.js",
     "test:e2e:web:local": "docker stop $(docker ps -a -q) && docker-compose -f ./docker-compose-mac.yml up --force-recreate -d && yarn build:web:webkit && jest test --config=./tests/jest.config.js",
     "test": "jest --config=./jest.config.js --passWithNoTests",
+    "test:playwright": "playwright test",
+    "test:playwright:ui": "playwright test --ui",
+    "test:playwright:headed": "playwright test --headed",
+    "test:playwright:debug": "playwright test --debug",
+    "test:playwright:helios": "playwright test tests/playwright/helios",
+    "test:playwright:install": "playwright install",
+    "test:playwright:report": "playwright show-report",
+    "test:helios:puppeteer": "WEBPACK_BUILD_OUTPUT_PATH=webkit-dev jest --config=./tests/jest.config.js tests/puppeteer-helios/",
     "postinstall": "patch-package"
   },
   "engines": {
@@ -60,12 +68,12 @@
     "yarn": ">=1.22.0 <2.0.0"
   },
   "dependencies": {
+    "@a16z/helios": "^0.9.0",
     "@ambire/signature-validator": "^1.0.3",
     "@babel/plugin-proposal-decorators": "~7.22.7",
     "@babel/plugin-proposal-private-methods": "~7.18.6",
     "@babel/plugin-transform-typescript": "^7.21.3",
     "@babel/preset-react": "^7.24.7",
-    "@defi-wonderland/interop": "^0.0.1",
     "@ensdomains/eth-ens-namehash": "^2.0.15",
     "@ethersproject/providers": "5.5.2",
     "@ethersproject/shims": "^5.5.0",
@@ -282,6 +290,7 @@
     "jest-puppeteer": "^9.0.0",
     "node-polyfill-webpack-plugin": "2.0.1",
     "otplib": "^12.0.1",
+    "@playwright/test": "^1.40.0",
     "patch-package": "^8.0.0",
     "postinstall-postinstall": "^2.1.0",
     "prettier": "2.5.0",
